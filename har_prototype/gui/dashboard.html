@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BAS-HAR // Astronaut Experiment Protocol Assistant</title>
+  <style>
+    :root {
+      --bg-space: #070a10;
+      --bg-panel: rgba(13, 20, 34, 0.85);
+      --bg-panel-header: rgba(18, 28, 48, 0.95);
+      --border-cyan: rgba(0, 240, 255, 0.25);
+      --border-cyan-bright: #00f0ff;
+      --accent-cyan: #00f0ff;
+      --accent-amber: #ffb703;
+      --accent-green: #00e676;
+      --accent-red: #ff3366;
+      --text-main: #e2e8f0;
+      --text-dim: #94a3b8;
+      --font-mono: "SF Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-space);
+      background-image: 
+        radial-gradient(ellipse at 15% 20%, rgba(0, 240, 255, 0.04) 0%, transparent 60%),
+        radial-gradient(ellipse at 85% 80%, rgba(255, 183, 3, 0.03) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 16px;
+    }
+
+    /* Scanline effect */
+    body::after {
+      content: " ";
+      display: block;
+      position: fixed;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    /* Header & Mission Top Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-cyan);
+      border-radius: 8px;
+      padding: 14px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 240, 255, 0.08);
+      position: relative;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border: 2px solid var(--accent-cyan);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: var(--accent-cyan);
+      font-family: var(--font-mono);
+      text-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .title-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+    }
+
+    .title-main {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
+    .telemetry-status-group {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    .ws-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .ws-connected {
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+    }
+
+    .ws-disconnected {
+      background: rgba(255, 51, 102, 0.15);
+      border: 1px solid var(--accent-red);
+      color: var(--accent-red);
+      animation: pulse 1s infinite alternate;
+    }
+
+    .mission-clock {
+      color: var(--accent-amber);
+      font-size: 14px;
+      letter-spacing: 1px;
+    }
+
+    /* Main Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Panels */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-cyan);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      background: var(--bg-panel-header);
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-cyan);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+    }
+
+    .panel-body {
+      padding: 16px;
+      flex: 1;
+    }
+
+    /* Camera Feed Container */
+    .feed-container {
+      position: relative;
+      background: #000;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      aspect-ratio: 4/3;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .feed-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .feed-overlay-top {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .rec-pill {
+      background: rgba(255, 51, 102, 0.85);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 0 10px rgba(255, 51, 102, 0.6);
+      animation: blink-rec 1.5s infinite;
+    }
+
+    .rec-dot {
+      width: 8px;
+      height: 8px;
+      background: white;
+      border-radius: 50%;
+    }
+
+    .telemetry-tag {
+      background: rgba(13, 20, 34, 0.85);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      padding: 4px 8px;
+      border-radius: 4px;
+      color: var(--accent-cyan);
+    }
+
+    .feed-reticle {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      border: 1px dashed rgba(0, 240, 255, 0.35);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* Out of Sequence Alert Banner */
+    .alert-banner {
+      background: linear-gradient(90deg, rgba(255, 51, 102, 0.25), rgba(255, 183, 3, 0.2));
+      border: 1px solid var(--accent-red);
+      border-left: 6px solid var(--accent-red);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-top: 14px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 0 15px rgba(255, 51, 102, 0.3);
+      animation: alert-glow 1.5s infinite alternate;
+    }
+
+    .alert-banner.active {
+      display: flex;
+    }
+
+    .alert-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .alert-title {
+      color: var(--accent-red);
+      font-weight: 800;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    .alert-msg {
+      font-size: 13px;
+      color: #fff;
+    }
+
+    .tts-badge {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-amber);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Action Callouts Pair */
+    .callout-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .callout-box {
+      background: rgba(18, 28, 48, 0.6);
+      border: 1px solid var(--border-cyan);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+
+    .callout-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .callout-value {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .callout-value.current {
+      color: var(--accent-cyan);
+    }
+
+    .callout-value.next {
+      color: var(--accent-amber);
+    }
+
+    /* Telemetry Stats Bar */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: rgba(18, 28, 48, 0.6);
+      border: 1px solid var(--border-cyan);
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+
+    .stat-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .stat-val {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 4px;
+    }
+
+    /* Sequence Protocol Tracker */
+    .sequence-tracker {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(18, 28, 48, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .step-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+
+    .step-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+
+    .step-state-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    /* Step states */
+    .step-item.pending {
+      opacity: 0.6;
+    }
+    .step-item.pending .step-state-badge {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+    }
+
+    .step-item.active {
+      border-color: var(--accent-cyan);
+      background: rgba(0, 240, 255, 0.08);
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.15);
+    }
+    .step-item.active .step-num {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+    .step-item.active .step-name {
+      color: #fff;
+      font-weight: 700;
+    }
+    .step-item.active .step-state-badge {
+      background: rgba(0, 240, 255, 0.2);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    .step-item.done {
+      border-color: rgba(0, 230, 118, 0.4);
+      background: rgba(0, 230, 118, 0.05);
+    }
+    .step-item.done .step-num {
+      background: var(--accent-green);
+      color: #000;
+    }
+    .step-item.done .step-name {
+      color: var(--accent-green);
+    }
+    .step-item.done .step-state-badge {
+      background: rgba(0, 230, 118, 0.15);
+      color: var(--accent-green);
+    }
+
+    /* Event Audit Log Table */
+    .log-table-wrapper {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      background: rgba(9, 13, 22, 0.9);
+    }
+
+    .log-table-wrapper::-webkit-scrollbar {
+      width: 6px;
+    }
+    .log-table-wrapper::-webkit-scrollbar-thumb {
+      background: rgba(0, 240, 255, 0.25);
+      border-radius: 3px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(18, 28, 48, 0.98);
+      color: var(--text-dim);
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-cyan);
+    }
+
+    td {
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    tr.success td:nth-child(3) {
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+
+    tr.flagged td:nth-child(3) {
+      color: var(--accent-red);
+      font-weight: 700;
+    }
+
+    tr.completed td:nth-child(3) {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    @keyframes blink-rec {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+
+    @keyframes alert-glow {
+      0% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+      100% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.6); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-icon">HAR</div>
+      <div>
+        <div class="title-sub">Lunar & Orbital BAS Experiment Telemetry</div>
+        <div class="title-main">Autonomous Edge HAR Protocol Assistant</div>
+      </div>
+    </div>
+    <div class="telemetry-status-group">
+      <div id="wsBadge" class="ws-badge ws-disconnected">
+        <span>▲</span> <span id="wsText">DISCONNECTED · RECONNECTING...</span>
+      </div>
+      <div class="mission-clock" id="missionClock">UTC 00:00:00</div>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <div class="dashboard-grid">
+
+    <!-- Left Column: Video Feed & Action HUD -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Fixed Payload Video Feed</span>
+        <span>STREAM: 127.0.0.1:5000</span>
+      </div>
+      <div class="panel-body">
+        <div class="feed-container">
+          <img id="cameraFeed" src="http://127.0.0.1:5000/video_feed" alt="Awaiting payload camera feed..." onerror="this.onerror=null; setTimeout(() => this.src='http://127.0.0.1:5000/video_feed?t=' + Date.now(), 2000);" />
+          
+          <div class="feed-overlay-top">
+            <div class="rec-pill">
+              <div class="rec-dot"></div>
+              <span>REC · LOCAL + STREAM</span>
+            </div>
+            <div class="telemetry-tag" id="feedMetadata">
+              640x480 @ 20 FPS · XVID
+            </div>
+          </div>
+          <div class="feed-reticle"></div>
+        </div>
+
+        <!-- Out-of-Sequence Voice Alert Banner -->
+        <div class="alert-banner" id="alertBanner">
+          <div class="alert-content">
+            <div class="alert-title">⚠️ PROTOCOL VIOLATION</div>
+            <div class="alert-msg" id="alertMsg">Unexpected step detected.</div>
+          </div>
+          <div class="tts-badge">
+            <span>🔊</span> VOICE ALERT SPOKEN
+          </div>
+        </div>
+
+        <!-- Step Callout Pair -->
+        <div class="callout-pair">
+          <div class="callout-box">
+            <div class="callout-label">Last Confirmed Action</div>
+            <div class="callout-value current" id="confirmedStepDisplay">STANDBY</div>
+          </div>
+          <div class="callout-box">
+            <div class="callout-label">Next Expected Protocol Step</div>
+            <div class="callout-value next" id="nextStepDisplay">pick_red_box</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Protocol Tracker, Stats, Event Log -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Mission Sequence Tracker</span>
+        <span id="protocolStateTag">STANDBY</span>
+      </div>
+      <div class="panel-body">
+        
+        <!-- Stats Cards -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-title">Progress</div>
+            <div class="stat-val" id="statProgress">0 / 5</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Flags</div>
+            <div class="stat-val" id="statFlags" style="color: var(--accent-red);">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Elapsed</div>
+            <div class="stat-val" id="statElapsed">00:00</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">System</div>
+            <div class="stat-val" id="statSystem" style="color: var(--accent-green); font-size: 15px; line-height: 28px;">ONLINE</div>
+          </div>
+        </div>
+
+        <!-- Vertical Step Tracker -->
+        <div class="sequence-tracker" id="sequenceTracker">
+          <div class="step-item active" data-step="pick_red_box">
+            <div class="step-meta">
+              <div class="step-num">1</div>
+              <div class="step-name">pick_red_box</div>
+            </div>
+            <div class="step-state-badge">ACTIVE ⚡</div>
+          </div>
+          <div class="step-item pending" data-step="open_red_box">
+            <div class="step-meta">
+              <div class="step-num">2</div>
+              <div class="step-name">open_red_box</div>
+            </div>
+            <div class="step-state-badge">PENDING</div>
+          </div>
+          <div class="step-item pending" data-step="pick_yellow_box">
+            <div class="step-meta">
+              <div class="step-num">3</div>
+              <div class="step-name">pick_yellow_box</div>
+            </div>
+            <div class="step-state-badge">PENDING</div>
+          </div>
+          <div class="step-item pending" data-step="open_yellow_box">
+            <div class="step-meta">
+              <div class="step-num">4</div>
+              <div class="step-name">open_yellow_box</div>
+            </div>
+            <div class="step-state-badge">PENDING</div>
+          </div>
+          <div class="step-item pending" data-step="place_back">
+            <div class="step-meta">
+              <div class="step-num">5</div>
+              <div class="step-name">place_back</div>
+            </div>
+            <div class="step-state-badge">PENDING</div>
+          </div>
+        </div>
+
+        <!-- Event Log Table -->
+        <div class="panel-header" style="margin: 12px 0 6px 0; border-radius: 4px; padding: 6px 10px;">
+          <span>Event Audit Trail (Newest on Top)</span>
+        </div>
+        <div class="log-table-wrapper">
+          <table id="eventTable">
+            <thead>
+              <tr>
+                <th style="width: 85px;">TIME</th>
+                <th>STEP</th>
+                <th style="width: 130px;">OUTCOME</th>
+              </tr>
+            </thead>
+            <tbody id="logBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // DOM Elements
+    const wsBadge = document.getElementById("wsBadge");
+    const wsText = document.getElementById("wsText");
+    const missionClock = document.getElementById("missionClock");
+    const confirmedStepDisplay = document.getElementById("confirmedStepDisplay");
+    const nextStepDisplay = document.getElementById("nextStepDisplay");
+    const alertBanner = document.getElementById("alertBanner");
+    const alertMsg = document.getElementById("alertMsg");
+    const protocolStateTag = document.getElementById("protocolStateTag");
+    const statProgress = document.getElementById("statProgress");
+    const statFlags = document.getElementById("statFlags");
+    const statElapsed = document.getElementById("statElapsed");
+    const logBody = document.getElementById("logBody");
+    const sequenceTracker = document.getElementById("sequenceTracker");
+
+    let alertTimeout = null;
+    let ws = null;
+    const PROTOCOL_STEPS = ["pick_red_box", "open_red_box", "pick_yellow_box", "open_yellow_box", "place_back"];
+
+    // Update real-time clock
+    setInterval(() => {
+      const now = new Date();
+      missionClock.textContent = "UTC " + now.toTimeString().split(" ")[0];
+    }, 1000);
+
+    function connectWebSocket() {
+      const wsUrl = "ws://127.0.0.1:8765";
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        wsBadge.className = "ws-badge ws-connected";
+        wsBadge.innerHTML = "<span>●</span> <span>TELEMETRY ONLINE</span>";
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleTelemetryMessage(data);
+        } catch (err) {
+          console.error("Telemetry parse error:", err);
+        }
+      };
+
+      ws.onclose = () => {
+        wsBadge.className = "ws-badge ws-disconnected";
+        wsBadge.innerHTML = "<span>▲</span> <span>RECONNECTING...</span>";
+        setTimeout(connectWebSocket, 2000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    function handleTelemetryMessage(data) {
+      // 1. Update Step Callouts
+      if (data.current_step) {
+        confirmedStepDisplay.textContent = data.current_step;
+      }
+      if (data.next_step) {
+        nextStepDisplay.textContent = data.next_step;
+      } else if (data.status === "completed") {
+        nextStepDisplay.textContent = "ALL COMPLETE";
+      }
+
+      // 2. Update Stats
+      if (data.stats) {
+        statProgress.textContent = `${data.stats.done} / ${data.stats.total}`;
+        statFlags.textContent = data.stats.flags !== undefined ? data.stats.flags : 0;
+        
+        if (data.stats.elapsed_seconds !== undefined) {
+          const totalSec = Math.floor(data.stats.elapsed_seconds);
+          const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+          const secs = String(totalSec % 60).padStart(2, "0");
+          statElapsed.textContent = `${mins}:${secs}`;
+        }
+      }
+
+      // 3. Status handling & Voice Alert Banner
+      if (data.status === "out_of_sequence") {
+        protocolStateTag.textContent = "FLAGGED";
+        protocolStateTag.style.color = "var(--accent-red)";
+        
+        showAlertBanner(`Out of sequence action! Expected: '${data.next_step || 'unknown'}'`);
+      } else if (data.status === "completed") {
+        protocolStateTag.textContent = "PROTOCOL COMPLETE";
+        protocolStateTag.style.color = "var(--accent-green)";
+      } else if (data.status === "success") {
+        protocolStateTag.textContent = "IN PROGRESS";
+        protocolStateTag.style.color = "var(--accent-cyan)";
+      }
+
+      // 4. Update Vertical Protocol Sequence Tracker
+      updateSequenceTracker(data);
+
+      // 5. Prepend Log Row if last_event provided
+      if (data.last_event && data.last_event.step) {
+        addLogRow(data.last_event);
+      }
+    }
+
+    function showAlertBanner(message) {
+      alertMsg.textContent = message;
+      alertBanner.classList.add("active");
+
+      if (alertTimeout) clearTimeout(alertTimeout);
+      alertTimeout = setTimeout(() => {
+        alertBanner.classList.remove("active");
+      }, 5000);
+    }
+
+    function updateSequenceTracker(data) {
+      const doneCount = (data.stats && data.stats.done !== undefined) ? data.stats.done : 0;
+      const stepItems = sequenceTracker.querySelectorAll(".step-item");
+
+      stepItems.forEach((el, index) => {
+        const badge = el.querySelector(".step-state-badge");
+        if (index < doneCount) {
+          el.className = "step-item done";
+          badge.textContent = "DONE ✓";
+        } else if (index === doneCount && data.status !== "completed") {
+          el.className = "step-item active";
+          badge.textContent = "ACTIVE ⚡";
+        } else if (data.status === "completed") {
+          el.className = "step-item done";
+          badge.textContent = "DONE ✓";
+        } else {
+          el.className = "step-item pending";
+          badge.textContent = "PENDING";
+        }
+      });
+    }
+
+    function addLogRow(ev) {
+      const tr = document.createElement("tr");
+      const statusClass = (ev.status === "out_of_sequence") ? "flagged" : (ev.status === "completed" ? "completed" : "success");
+      tr.className = statusClass;
+
+      const timeTd = document.createElement("td");
+      timeTd.textContent = ev.time || new Date().toTimeString().split(" ")[0];
+
+      const stepTd = document.createElement("td");
+      stepTd.textContent = ev.step || "UNKNOWN";
+
+      const statusTd = document.createElement("td");
+      statusTd.textContent = (ev.status || "").toUpperCase();
+
+      tr.appendChild(timeTd);
+      tr.appendChild(stepTd);
+      tr.appendChild(statusTd);
+
+      // Prepend newest on top
+      logBody.insertBefore(tr, logBody.firstChild);
+
+      // Keep max 50 rows in DOM
+      if (logBody.children.length > 50) {
+        logBody.removeChild(logBody.lastChild);
+      }
+    }
+
+    // Start WebSocket listener on page load
+    window.addEventListener("DOMContentLoaded", () => {
+      connectWebSocket();
+    });
+  </script>
+</body>
+</html>

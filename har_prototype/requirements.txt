@@ -1,0 +1,11 @@
+# Core vision and activity recognition dependencies
+opencv-contrib-python>=4.8.0
+mediapipe>=0.10.14,<=0.10.21
+numpy>=1.24.0,<2.0.0
+
+# Offline Text-To-Speech
+pyttsx3>=2.90
+
+# Video streaming and Real-time WebSocket telemetry
+flask>=3.0.0
+websockets>=12.0
