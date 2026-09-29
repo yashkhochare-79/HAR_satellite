@@ -70,13 +70,21 @@ async def _async_broadcast(message_str: str):
             connected_ws_clients.discard(client)
 
 
+streamer_instance: Optional[VideoStreamer] = None
+
+
 def broadcast_telemetry(state_data: dict):
     """
     Thread-safe dispatcher called from the OpenCV loop.
-    Pushes state_data to the WebSocket asyncio loop on the background thread.
+    Pushes state_data to the WebSocket asyncio loop and the HTTP/SSE streamer.
     """
     global latest_telemetry_cache
     latest_telemetry_cache = state_data
+    if streamer_instance is not None:
+        try:
+            streamer_instance.set_telemetry(state_data)
+        except Exception:
+            pass
     if ws_loop is not None and ws_loop.is_running():
         msg_str = json.dumps(state_data)
         asyncio.run_coroutine_threadsafe(_async_broadcast(msg_str), ws_loop)
@@ -132,6 +140,8 @@ def main():
 
     print("[INIT] Initializing Video Streamer & Local Storage...")
     streamer = VideoStreamer()
+    global streamer_instance
+    streamer_instance = streamer
 
     print("[INIT] Starting Offline Voice Alert Manager...")
     voice_alert.start()

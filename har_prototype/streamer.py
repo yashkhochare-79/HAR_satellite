@@ -8,8 +8,9 @@ import threading
 import time
 import logging
 from typing import Optional
+import json
 import cv2
-from flask import Flask, Response, render_template_string
+from flask import Flask, Response, render_template_string, jsonify
 from werkzeug.serving import make_server
 import config
 
@@ -43,6 +44,7 @@ class VideoStreamer:
         # Thread-safe buffer holding only the most recent JPEG frame
         self._frame_lock = threading.Lock()
         self._latest_jpeg: Optional[bytes] = None
+        self._latest_telemetry: dict = {}
         self._running = True
 
         # Initialize local VideoWriter (XVID container)
@@ -78,8 +80,13 @@ class VideoStreamer:
         print(f"[STREAMER] Live MJPEG stream active at http://{self.stream_ip}:{self.stream_port}/video_feed")
         print(f"[STREAMER] Local recording path: {self.video_output_path}")
 
+    def set_telemetry(self, telemetry_data: dict):
+        """Thread-safe update of latest telemetry state for HTTP/SSE clients."""
+        with self._frame_lock:
+            self._latest_telemetry = dict(telemetry_data)
+
     def _setup_routes(self):
-        """Defines Flask routes for MJPEG streaming and basic HTML viewer."""
+        """Defines Flask routes for MJPEG streaming, HTML dashboard, and SSE/HTTP telemetry."""
 
         @self._app.route("/video_feed")
         def video_feed():
@@ -87,6 +94,31 @@ class VideoStreamer:
                 self._mjpeg_generator(),
                 mimetype="multipart/x-mixed-replace; boundary=frame"
             )
+
+        @self._app.route("/api/telemetry")
+        def api_telemetry():
+            with self._frame_lock:
+                data = dict(self._latest_telemetry)
+            resp = jsonify(data)
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            return resp
+
+        @self._app.route("/api/events")
+        def sse_events():
+            def event_stream():
+                last_encoded = ""
+                while self._running:
+                    with self._frame_lock:
+                        curr = json.dumps(self._latest_telemetry)
+                    if curr != last_encoded and self._latest_telemetry:
+                        last_encoded = curr
+                        yield f"data: {curr}\n\n"
+                    time.sleep(0.08)
+            resp = Response(event_stream(), mimetype="text/event-stream")
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            resp.headers["Cache-Control"] = "no-cache"
+            resp.headers["X-Accel-Buffering"] = "no"
+            return resp
 
         @self._app.route("/")
         @self._app.route("/dashboard")

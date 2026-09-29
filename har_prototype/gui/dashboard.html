@@ -577,7 +577,7 @@
       </div>
       <div class="panel-body">
         <div class="feed-container">
-          <img id="cameraFeed" src="http://127.0.0.1:5000/video_feed" alt="Awaiting payload camera feed..." onerror="this.onerror=null; setTimeout(() => this.src='http://127.0.0.1:5000/video_feed?t=' + Date.now(), 2000);" />
+          <img id="cameraFeed" src="/video_feed" alt="Awaiting payload camera feed..." onerror="this.onerror=null; setTimeout(() => this.src='/video_feed?t=' + Date.now(), 2000);" />
           
           <div class="feed-overlay-top">
             <div class="rec-pill">
@@ -733,33 +733,104 @@
       missionClock.textContent = "UTC " + now.toTimeString().split(" ")[0];
     }, 1000);
 
-    function connectWebSocket() {
-      const wsUrl = "ws://127.0.0.1:8765";
-      ws = new WebSocket(wsUrl);
+    let ws = null;
+    let sseSource = null;
+    let pollInterval = null;
 
-      ws.onopen = () => {
-        wsBadge.className = "ws-badge ws-connected";
-        wsBadge.innerHTML = "<span>●</span> <span>TELEMETRY ONLINE</span>";
-      };
+    function connectTelemetry() {
+      // If hosted locally, attempt direct WebSocket first
+      const isLocal = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+      let wsConnected = false;
 
-      ws.onmessage = (event) => {
+      if (isLocal) {
         try {
-          const data = JSON.parse(event.data);
-          handleTelemetryMessage(data);
-        } catch (err) {
-          console.error("Telemetry parse error:", err);
+          const wsUrl = "ws://127.0.0.1:8765";
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            wsConnected = true;
+            wsBadge.className = "ws-badge ws-connected";
+            wsBadge.innerHTML = "<span>●</span> <span>TELEMETRY ONLINE</span>";
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              handleTelemetryMessage(data);
+            } catch (err) {
+              console.error("Telemetry parse error:", err);
+            }
+          };
+
+          ws.onclose = () => {
+            if (wsConnected) {
+              wsBadge.className = "ws-badge ws-disconnected";
+              wsBadge.innerHTML = "<span>▲</span> <span>RECONNECTING...</span>";
+            }
+            startTunnelFallback();
+          };
+
+          ws.onerror = () => {
+            if (ws) ws.close();
+            startTunnelFallback();
+          };
+          return;
+        } catch (e) {
+          startTunnelFallback();
         }
-      };
+      } else {
+        // Accessed via public tunnel or proxy: use SSE / HTTP over port 5000
+        startTunnelFallback();
+      }
+    }
 
-      ws.onclose = () => {
-        wsBadge.className = "ws-badge ws-disconnected";
-        wsBadge.innerHTML = "<span>▲</span> <span>RECONNECTING...</span>";
-        setTimeout(connectWebSocket, 2000);
-      };
+    function startTunnelFallback() {
+      if (sseSource || pollInterval) return;
 
-      ws.onerror = () => {
-        ws.close();
-      };
+      // 1. Try Server-Sent Events (SSE)
+      try {
+        sseSource = new EventSource("/api/events");
+        sseSource.onopen = () => {
+          wsBadge.className = "ws-badge ws-connected";
+          wsBadge.innerHTML = "<span>●</span> <span>TELEMETRY ONLINE</span>";
+        };
+        sseSource.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            handleTelemetryMessage(data);
+          } catch (err) {}
+        };
+        sseSource.onerror = () => {
+          if (sseSource) {
+            sseSource.close();
+            sseSource = null;
+          }
+          startPollingFallback();
+        };
+      } catch (err) {
+        startPollingFallback();
+      }
+    }
+
+    function startPollingFallback() {
+      if (pollInterval) return;
+      wsBadge.className = "ws-badge ws-connected";
+      wsBadge.innerHTML = "<span>●</span> <span>TELEMETRY ONLINE</span>";
+
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch("/api/telemetry");
+          if (res.ok) {
+            const data = await res.json();
+            if (data && Object.keys(data).length > 0) {
+              handleTelemetryMessage(data);
+            }
+          }
+        } catch (e) {
+          wsBadge.className = "ws-badge ws-disconnected";
+          wsBadge.innerHTML = "<span>▲</span> <span>RECONNECTING...</span>";
+        }
+      }, 150);
     }
 
     function handleTelemetryMessage(data) {
@@ -868,9 +939,9 @@
       }
     }
 
-    // Start WebSocket listener on page load
+    // Start telemetry listener on page load
     window.addEventListener("DOMContentLoaded", () => {
-      connectWebSocket();
+      connectTelemetry();
     });
   </script>
 </body>
