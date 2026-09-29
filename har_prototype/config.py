@@ -3,6 +3,7 @@ Configuration settings for AI Human Activity Recognition (HAR) On-Board Assistan
 All shared constants, thresholds, camera settings, network ports, and file paths are centralized here.
 """
 
+import os
 from pathlib import Path
 import numpy as np
 
@@ -49,13 +50,13 @@ YELLOW_LOWER = np.array([20, 100, 100], dtype=np.uint8)
 YELLOW_UPPER = np.array([35, 255, 255], dtype=np.uint8)
 
 # --- Network & Streaming ---
-# IP & Port for live video MJPEG streaming
-STREAM_IP = "127.0.0.1"
-STREAM_PORT = 5000
+# IP & Port for live video MJPEG streaming and web dashboard
+STREAM_IP = os.environ.get("HOST", "0.0.0.0")
+STREAM_PORT = int(os.environ.get("PORT", 5000))
 
 # Host & Port for real-time WebSocket state telemetry pushed to the dashboard
-WS_HOST = "127.0.0.1"
-WS_PORT = 8765
+WS_HOST = os.environ.get("WS_HOST", "0.0.0.0")
+WS_PORT = int(os.environ.get("WS_PORT", 8765))
 
 # --- Storage & Logging Paths ---
 LOG_DIR = BASE_DIR / "logs"

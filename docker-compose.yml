@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  har-assistant:
+    build: .
+    container_name: har_satellite_assistant
+    ports:
+      - "5000:5000"
+      - "8765:8765"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+    restart: unless-stopped
